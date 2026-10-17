@@ -13,7 +13,7 @@
 | Excel Check List 行号 | 主题 | 当前证据状态 |
 |---|---|---|
 | 2–3、13 | Excel 混合类型、合并单元格、日期序列号 | 有实际处理方式 |
-| 4、8–9、14 | S01/S02 关联膨胀、映射键、TempDB、字符相等性 | 有处理方式，性能指标未提供 |
+| 4、8–9、14 | OpsLine/BillingLine 关联膨胀、映射键、TempDB、字符相等性 | 有处理方式，性能指标未提供 |
 | 5 | 账单号 `MAX` 的业务合理性 | 存疑；只能证实有讨论 |
 | 6–7、18、20 | 历史科室映射、预约项目标准化 | 有处理方式 |
 | 10、12、16 | 高精度日期转换与源数据缺失 | 记录了处理路径；回归需核实 |
@@ -148,6 +148,13 @@ SELECT TRY_CONVERT(datetime2(7), @raw) AS parsed_timestamp,
        CAST(TRY_CONVERT(datetime2(7), @raw) AS date) AS business_date;
 ```
 
+**可复现事实**（2026-10-17 于本地 SQL Server Developer 实例 v17.0 实测）：
+
+- `TRY_CONVERT(datetime, N'2025-08-07 11:23:00.0000000')` 与 `TRY_CONVERT(datetime, N'2025-08-07 11:23:00.1234567')` 均返回 `NULL`——字符串小数秒位数超过 3 位时，直接转 `datetime` 解析失败；
+- `TRY_CONVERT(datetime2(7), 同值)` 解析成功；先转 `datetime2(7)` 再 `CAST` 为 `datetime` 亦成功（小数秒按四舍五入进位，`.9999999` 会进位到下一秒）。
+
+该行为与 Check List 记录的现象一致，是独立于旧记录、可在测试实例复现的技术事实；具体边界随 SQL Server 版本与转换样式可能不同，迁移前应使用真实格式样本在目标实例验证。
+
 **注意**：若业务要求精度，则存储为 `datetime2(7)` 比多做一次降精度转换更合理；`TRY_CONVERT` 返回 NULL 仍需记录坏值和处理规则。
 
 ## 案例 H｜源文件存在 Excel 日期序列号
@@ -172,7 +179,7 @@ SELECT TRY_CONVERT(datetime2(7), @raw) AS parsed_timestamp,
 
 建议优先：定位冲突值 → 定义规范化键 → 分析重复规则 → 用测试数据核对结果 → 再决定是否变更列级 Collation。
 
-## 案例 J｜F02 派生指标字段缺失：过滤了错误列
+## 案例 J｜DealAssist 派生指标字段缺失：过滤了错误列
 
 **对应：第 15 行**
 
@@ -239,6 +246,19 @@ SELECT TRY_CONVERT(datetime2(7), @raw) AS parsed_timestamp,
 **工作簿提到** Power Query 的 `Int64.From` 默认 `RoundingMode.ToEven`（向最近偶数舍入），而 SQL Server 的 `ROUND` 对中间值处理语义可能不同。
 
 **示例边界**：`0.5→0`、`1.5→2`、`2.5→2`、`-1.5→-2`。应区分原模型实际用的是 DAX `ROUND`、Power Query `Number.Round`、`Int64.From` 还是强制类型转换，不能笼统称“DAX 一律采用银行家舍入”。
+
+**三种舍入语义实测对照**（T-SQL 部分于 2026-10-17 在本地 SQL Server Developer 实例实测；`Int64.From` 为 Power Query 文档语义）：
+
+| 输入 | T-SQL `ROUND(x,0)` | T-SQL `CAST(x AS int)` | Power Query `Int64.From`（ToEven） |
+|---:|---:|---:|---:|
+| 0.5 | 1 | 0 | 0 |
+| 1.5 | 2 | 1 | 2 |
+| 2.5 | 3 | 2 | 2 |
+| -0.5 | -1 | 0 | 0 |
+| -1.5 | -2 | -1 | -2 |
+| -2.5 | -3 | -2 | -2 |
+
+结论：T-SQL `ROUND` 是“四舍五入、`.5` 远离零”；`CAST` 到整数是“向零截断”；`Int64.From` 是“向最近偶数”。三者互不相同，跨工具迁移数量口径时必须先确认源端实际使用的是哪一种。
 
 **注意**：工作簿记录了一个候选 `CASE` 实现，但未提供覆盖正负数和所有 `.5` 边界的测试结果；公开示例应先编写测试用例，再确定 SQL 等价表达式。
 
