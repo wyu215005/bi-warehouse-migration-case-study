@@ -25,6 +25,8 @@ flowchart TB
     DWD --> ADS[ADS 报表交付]
     DWS --> ADS
     W --> ADS
+    ODS -.配置表直通.-> ADS
+    DWD -->|同层多阶段| DWD
     ADS --> BI[Power BI 读取与刷新]
     SCH[17 批次的依赖编排] -.执行顺序.-> DWD
     SCH -.执行顺序.-> ADS
@@ -53,7 +55,7 @@ Check List 第 3、13 行记录了合并区域后续行为空，以及 Excel 日
 
 ### 2.3 文件路径参数化
 
-`SSIS包命名` 中可以看到类似 `@[User::varFilePath]` 的 Excel 连接字符串表达式，以及 `FRC_Loop_File` 等 Foreach 循环命名。结合项目实践，接入层曾处理文件夹遍历及动态连接路径；应确保**每轮循环不仅改变路径变量，也让 Excel Connection Manager 的 ConnectionString 表达式随变量重新计算**，否则会出现“循环多次，始终读首个文件”的风险。
+`SSIS包命名` 中可以看到类似 `@[User::varFilePath]` 的 Excel 连接字符串表达式，以及形如 `Loop_ExcelFolder` 的 Foreach 循环命名（原内部命名已泛化）。结合项目实践，接入层曾处理文件夹遍历及动态连接路径；应确保**每轮循环不仅改变路径变量，也让 Excel Connection Manager 的 ConnectionString 表达式随变量重新计算**，否则会出现“循环多次，始终读首个文件”的风险。
 
 **实际记录**：使用了参数化和 Foreach，曾解决源文件路径更新问题。**不能据此夸大为**自动感知任意新增数据源、实时文件监听和无需配置的弹性接入。
 
