@@ -1,0 +1,22 @@
+# Only sanitized public documentation and synthetic data should be committed.
+# Never commit real internal handoff records, spreadsheets or database backups.
+*.xlsx
+*.xls
+*.xlsm
+*.bak
+*.bacpac
+*.dtsx
+*.ispac
+*.env
+.env.*
+private/
+originals/
+internal/
+raw-data/
+secrets/
+*原始血缘*.html
+*静态血缘脚本*.html
+*交接文档*.pdf
+
+# 内部维护提示词（不对外发布）
+PROMPT_FOR_TRAE.md
